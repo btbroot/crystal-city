@@ -75,7 +75,7 @@ export default function Home(){
  const equippedCount=Object.values(snapshot.equipped).filter(Boolean).length;
  return <div className="app-shell">
   <header className="topbar">
-   <a href="/" className="brand" aria-label="Crystal City home"><span className="brand-gem"><Gem size={25} color="#edf3ce"/></span><span>crystal city<span className="brand-dot">.</span></span></a>
+   <a href={`${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/`} className="brand" aria-label="Crystal City home"><span className="brand-gem"><Gem size={25} color="#edf3ce"/></span><span>crystal city<span className="brand-dot">.</span></span></a>
    <span className="header-tag">A LITTLE EXPLORATION. A LOT OF YOU.</span>
    <div className="header-actions"><span className="save-status"><span className={snapshot.saveOk?'status-dot':'status-dot warning'}/>{snapshot.saveOk?'Progress saved':'Saving unavailable'}</span><button className="icon-button help-button" onClick={()=>openPanel('help')} aria-label="How to play"><CircleHelp size={19}/></button></div>
   </header>

@@ -77,9 +77,10 @@ function bench(c:CanvasRenderingContext2D,x:number,y:number){rect(c,x+3,y+4,38,6
 function lamp(c:CanvasRenderingContext2D,x:number,y:number){ellipse(c,x+3,y+2,8,3,'#405d3822');rect(c,x-2,y-34,4,35,'#5b6b58');rect(c,x-5,y-41,10,9,'#60705b');rect(c,x-3,y-40,6,6,'#f2dd9c');rect(c,x-6,y-43,12,3,'#5c6a55');rect(c,x-4,y,8,3,'#63715b');}
 function fountain(c:CanvasRenderingContext2D,time:number){const x=20.5*TILE,y=18.3*TILE;ellipse(c,x+5,y+9,38,19,'#40574522');ellipse(c,x,y,37,23,'#b3bba7');ellipse(c,x,y-4,34,22,'#edf0d3');ellipse(c,x,y-5,29,17,'#79b1aa');ellipse(c,x,y-7,24,13,'#9bcac0');c.strokeStyle='#d4e9cf';c.lineWidth=1;for(let i=0;i<3;i++){c.beginPath();c.ellipse(x,y-7,8+i*6+Math.sin(time*2+i),4+i*2,0,0,Math.PI*2);c.stroke();}rect(c,x-4,y-32,8,25,'#c8cfb2');ellipse(c,x,y-33,13,6,'#eef0d7');ellipse(c,x,y-35,10,4,'#91bdb0');rect(c,x-2,y-48,4,15,'#accfc0');rect(c,x-1,y-50+Math.sin(time*3)*2,2,6,'#eff4d9');}
 export type View={width:number;height:number;camX:number;camY:number;zoom:number};
-export function renderWorld(c:CanvasRenderingContext2D,s:State,width:number,height:number,time:number,particles:{x:number;y:number;text:string;life:number;color:string}[]):View{
+export function renderWorld(c:CanvasRenderingContext2D,s:State,width:number,height:number,time:number,particles:{x:number;y:number;text:string;life:number;color:string}[],playerBottomLimit=height):View{
  const zoom=width<600?1.2:1.4;const vw=width/zoom,vh=height/zoom;
- const camX=Math.max(0,Math.min(WORLD_W-vw,s.x-vw/2)),camY=Math.max(0,Math.min(WORLD_H-vh,s.y-vh*.76));
+ const playerScreenY = Math.min(height * .76, playerBottomLimit);
+ const camX=Math.max(0,Math.min(WORLD_W-vw,s.x-vw/2)),camY=Math.max(0,Math.min(WORLD_H-vh,s.y-playerScreenY/zoom));
  c.clearRect(0,0,width,height);c.save();c.scale(zoom,zoom);c.translate(-Math.round(camX),-Math.round(camY));
  const left=Math.max(0,Math.floor(camX/TILE)-1),top=Math.max(0,Math.floor(camY/TILE)-2),right=Math.min(40,Math.ceil((camX+vw)/TILE)+1),bottom=Math.min(34,Math.ceil((camY+vh)/TILE)+2);
  for(let ty=top;ty<bottom;ty++)for(let tx=left;tx<right;tx++){

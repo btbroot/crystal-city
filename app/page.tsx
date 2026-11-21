@@ -38,7 +38,11 @@ export default function Home(){
    if(active){
     const k=keys.current;move(s,Number(k.has('d')||k.has('ArrowRight'))-Number(k.has('a')||k.has('ArrowLeft')),Number(k.has('s')||k.has('ArrowDown'))-Number(k.has('w')||k.has('ArrowUp')),dt);
     const found=collect(s);if(found.length){for(const cr of found)particles.push({x:cr.x,y:cr.y,text:`+${RARITIES[cr.rarity].value}`,life:1.5,color:cr.rarity===3?'#836021':'#375d49'});sound(660+found[0].rarity*120);persist();}
-    s.spawnTime+=dt;if(s.spawnTime>1.3){s.spawnTime=0;if(s.crystals.length<72)spawnCrystal(s);}
+    s.spawnTime += dt;
+    if (s.spawnTime > 1.3) {
+     s.spawnTime = 0;
+     spawnCrystal(s);
+    }
    }else s.moving=false;
    if(tickStock(s)){sync();persist();}
    for(let i=particles.length-1;i>=0;i--){particles[i].life-=dt;if(particles[i].life<=0)particles.splice(i,1);}

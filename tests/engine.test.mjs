@@ -34,9 +34,26 @@ test('stock stays stable within a minute and restocks all shops at the boundary'
 test('save restores purchases, equipment, position, and current stock, and rejects corrupt data',()=>{
  const now=Date.now(),s=newState(now);s.balance=500;s.stock[0]=['item-0','item-1','item-2','item-3'];buy(s,'item-0',0);s.x=16*32;s.y=21*32;
  let raw;assert.equal(save(s,{setItem:(_,value)=>raw=value}),true);const result=restore(raw,now);
+ assert.ok(result.crystals.length <= 36);
  for(const key of ['balance','collected','x','y'])assert.equal(result[key],s[key]);assert.deepEqual(result.owned,s.owned);assert.deepEqual(result.equipped,s.equipped);assert.deepEqual(result.stock,s.stock);
  assert.equal(restore('{oops').balance,0);assert.equal(restore(JSON.stringify({version:1,balance:-1})).balance,0);
  assert.equal(save(s,{setItem:()=>{throw new Error('Full');}}),false);assert.equal(s.saveOk,false);
  const data=JSON.parse(raw);data.equipped.hat='item-8';data.x=-100;const fixed=restore(JSON.stringify(data));assert.equal(fixed.equipped.hat,null);assert.ok(walkable(fixed.x,fixed.y));
 });
-test('spawned crystals occupy walkable city space',()=>{const s=newState();for(let i=0;i<200;i++)spawnCrystal(s);for(const c of s.crystals){assert.ok(walkable(c.x,c.y));assert.ok(c.rarity>=0&&c.rarity<4);}const near=newState();near.x=SHOPS[0].x;near.y=SHOPS[0].y;assert.equal(nearestShop(near),0);});
+test('spawned crystals occupy walkable city space and respect the cap', () => {
+ const s = newState();
+ assert.ok(s.crystals.length <= 36);
+
+ s.crystals.length = 0;
+ for (let i = 0; i < 200; i++) spawnCrystal(s);
+ assert.equal(s.crystals.length, 36);
+ for (const c of s.crystals) {
+  assert.ok(walkable(c.x, c.y));
+  assert.ok(c.rarity >= 0 && c.rarity < 4);
+ }
+
+ const near = newState();
+ near.x = SHOPS[0].x;
+ near.y = SHOPS[0].y;
+ assert.equal(nearestShop(near), 0);
+});

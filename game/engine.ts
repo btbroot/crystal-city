@@ -2,6 +2,7 @@ export const TILE = 32;
 export const WORLD_W = 40 * TILE;
 export const WORLD_H = 34 * TILE;
 export const SAVE_KEY = 'crystal-city-v1';
+const MAX_CRYSTALS = 36;
 export type Slot = 'hat' | 'outfit' | 'shoes' | 'accessory';
 export type Product = { id: string; name: string; slot: Slot; color: string; price: number; rarity: number; style: number };
 export const RARITIES = [
@@ -70,6 +71,7 @@ export function rollStock(shop:number,random=Math.random):string[] {
 }
 export function rarityRoll(random=Math.random):number {let r=random();for(let i=0;i<RARITIES.length;i++){r-=RARITIES[i].chance;if(r<0)return i;}return 3;}
 export function spawnCrystal(s:State,random=Math.random) {
+  if (s.crystals.length >= MAX_CRYSTALS) return;
   for(let attempt=0;attempt<300;attempt++){
     const x=48+random()*(WORLD_W-96),y=48+random()*(WORLD_H-96);
     if(walkable(x,y)&&!s.crystals.some(c=>Math.hypot(c.x-x,c.y-y)<30)&&Math.hypot(s.x-x,s.y-y)>30){
@@ -79,9 +81,17 @@ export function spawnCrystal(s:State,random=Math.random) {
 }
 export function newState(now=Date.now()):State {
   const s:State={x:20.5*TILE,y:19.6*TILE,balance:0,collected:0,owned:[],equipped:{...EMPTY_EQUIPMENT},stock:SHOPS.map((_,i)=>rollStock(i)),stockEpoch:Math.floor(now/60000),crystals:[],nextId:0,spawnTime:0,direction:0,moving:false,step:0,saveOk:true};
-  for(let i=0;i<65;i++)spawnCrystal(s);
   // A first trail makes the collection loop immediately discoverable.
-  for(const [x,y,r] of [[19,19,0],[18,19,1],[17,18,0],[16,18,0],[15,17,1],[21,20,0]] as number[][])s.crystals.push({id:s.nextId++,x:x*TILE+16,y:y*TILE+16,rarity:r,phase:0});
+  const starterTrail = [
+    [19, 19, 0], [18, 19, 1], [17, 18, 0],
+    [16, 18, 0], [15, 17, 1], [21, 20, 0],
+  ] as const;
+  for (let i = 0; i < MAX_CRYSTALS - starterTrail.length; i++) {
+    spawnCrystal(s);
+  }
+  for (const [x, y, rarity] of starterTrail) {
+    s.crystals.push({id: s.nextId++, x: x * TILE + 16, y: y * TILE + 16, rarity, phase: 0});
+  }
   return s;
 }
 export function tickStock(s:State,now=Date.now()):boolean {

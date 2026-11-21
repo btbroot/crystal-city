@@ -2,25 +2,53 @@
 
 import { useEffect, useRef, useState, useCallback, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowRight, ArrowUpRight, Check, ChevronRight, CircleHelp, Diamond, Flower2, MapPin, Maximize2, Move, Pause, Play, Shirt, ShoppingBag, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Check, ChevronRight, CircleHelp, Diamond, Flower2, MapPin, Maximize2, Pause, Play, Shirt, ShoppingBag, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import { CATALOG, EMPTY_EQUIPMENT, RARITIES, SHOPS, SAVE_KEY, byId, buy, collect, equip, move, nearestShop, restore, save, spawnCrystal, tickStock, type Equipment, type Product, type Slot, type State } from '../game/engine';
 import { character, drawProduct, minimap, renderWorld } from '../game/render';
 
 type Panel = 'wardrobe' | 'help' | 'map' | null;
 type Snapshot = {balance:number;collected:number;owned:string[];equipped:Equipment;stock:string[][];near:number|null;saveOk:boolean};
+type JoystickInput = {pointerId: number; startX: number; startY: number; dx: number; dy: number};
 const initial:Snapshot={balance:0,collected:0,owned:[],equipped:EMPTY_EQUIPMENT,stock:[[],[],[]],near:null,saveOk:true};
 function safeSave(s:State){try{return save(s,localStorage);}catch{s.saveOk=false;return false;}}
 const slotNames:Record<Slot,string>={hat:'Hats',outfit:'Outfits',shoes:'Shoes',accessory:'Accessories'};
 const joystickTravel = 28;
 const joystickDeadZone = 5;
+
+function drawJoystickRing(context: CanvasRenderingContext2D, stage: HTMLElement, canvasBounds: DOMRect, input: JoystickInput) {
+ const x = input.startX + input.dx;
+ const y = input.startY + input.dy;
+ const radius = 32;
+ const lineWidth = 2;
+ const reach = radius + lineWidth / 2;
+
+ context.save();
+ // Leave room for controls even when one appears or moves during a drag.
+ for (const button of stage.querySelectorAll('button')) {
+  const bounds = button.getBoundingClientRect();
+  const overlapsX = x + reach > bounds.left && x - reach < bounds.right;
+  const overlapsY = y + reach > bounds.top && y - reach < bounds.bottom;
+  if (!overlapsX || !overlapsY || !bounds.width || !bounds.height) continue;
+  context.beginPath();
+  context.rect(0, 0, canvasBounds.width, canvasBounds.height);
+  context.rect(bounds.left - canvasBounds.left, bounds.top - canvasBounds.top, bounds.width, bounds.height);
+  context.clip('evenodd');
+ }
+ context.beginPath();
+ context.arc(x - canvasBounds.left, y - canvasBounds.top, radius, 0, Math.PI * 2);
+ context.lineWidth = lineWidth;
+ context.strokeStyle = '#385b46dd';
+ context.stroke();
+ context.restore();
+}
+
 function Gem({color='#89b6a0',size=18}:{color?:string;size?:number}) {return <svg width={size} height={size} viewBox="0 0 20 24" fill="none" aria-hidden="true"><path d="M10 1 18 8v9l-8 6-8-6V8L10 1Z" fill={color}/><path d="m10 1 0 22-8-6V8l8-7Z" fill="white" fillOpacity=".32"/><path d="M6 8v7" stroke="white" strokeOpacity=".65" strokeWidth="2"/></svg>;}
 function Avatar({equipment,large=false}:{equipment:Equipment;large?:boolean}){const ref=useRef<HTMLCanvasElement>(null);useEffect(()=>{const c=ref.current?.getContext('2d');if(!c)return;c.clearRect(0,0,160,160);c.imageSmoothingEnabled=false;character(c,80,135,equipment,0,0,false,large?3:2.9);},[equipment,large]);return <canvas width="160" height="160" ref={ref} className="avatar-canvas" aria-label="Your character wearing equipped clothing"/>;}
 function ProductArt({product}:{product:Product}){const ref=useRef<HTMLCanvasElement>(null);useEffect(()=>{const c=ref.current?.getContext('2d');if(c){c.imageSmoothingEnabled=false;drawProduct(c,product,150,110);}},[product]);return <canvas width="150" height="110" ref={ref} aria-label={product.name}/>;}
 
 export default function Home(){
  const canvas=useRef<HTMLCanvasElement>(null),mapCanvas=useRef<HTMLCanvasElement>(null),stage=useRef<HTMLDivElement>(null);
- const joystick=useRef<HTMLDivElement>(null);
- const joystickInput=useRef({pointerId: null as number | null, x: 0, y: 0, strength: 0});
+ const joystickInput=useRef<JoystickInput | null>(null);
  const state=useRef<State|null>(null),keys=useRef(new Set<string>()),dialogRef=useRef<HTMLDivElement>(null),audio=useRef<AudioContext|null>(null),lastFocus=useRef<HTMLElement|null>(null);
  const [snapshot,setSnapshot]=useState<Snapshot>(initial),[panel,setPanel]=useState<Panel>(null),[shop,setShop]=useState<number|null>(null),[paused,setPaused]=useState(false),[muted,setMuted]=useState(true),[ready,setReady]=useState(false),[seconds,setSeconds]=useState(60),[tab,setTab]=useState<Slot>('hat'),[toast,setToast]=useState(''),[isFullscreen,setIsFullscreen]=useState(false);
  const [hasTouchscreen,setHasTouchscreen]=useState(false);
@@ -31,15 +59,11 @@ export default function Home(){
  const persist=useCallback(()=>{if(state.current){safeSave(state.current);sync();}},[sync]);
  const sound=useCallback((pitch=660)=>{if(flags.current.muted)return;try{const ac=audio.current??new AudioContext();audio.current=ac;void ac.resume();const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(pitch,ac.currentTime);o.frequency.exponentialRampToValueAtTime(pitch*1.5,ac.currentTime+.12);g.gain.setValueAtTime(.055,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+.25);o.connect(g);g.connect(ac.destination);o.start();o.stop(ac.currentTime+.25);}catch{}},[]);
  const releaseJoystick = useCallback((pointerId?: number) => {
-  const activePointer = joystickInput.current.pointerId;
-  if (activePointer === null || (pointerId !== undefined && pointerId !== activePointer)) return;
-  joystickInput.current = {pointerId: null, x: 0, y: 0, strength: 0};
-  const control = joystick.current;
-  if (!control) return;
-  delete control.dataset.dragging;
-  control.style.removeProperty('--joystick-x');
-  control.style.removeProperty('--joystick-y');
-  if (control.hasPointerCapture(activePointer)) control.releasePointerCapture(activePointer);
+  const input = joystickInput.current;
+  if (!input || (pointerId !== undefined && pointerId !== input.pointerId)) return;
+  joystickInput.current = null;
+  const playfield = canvas.current;
+  if (playfield?.hasPointerCapture(input.pointerId)) playfield.releasePointerCapture(input.pointerId);
  }, []);
  const clearMovement = useCallback(() => {
   keys.current.clear();
@@ -53,31 +77,19 @@ export default function Home(){
  const openPanel=useCallback((p:Panel)=>{lastFocus.current=document.activeElement as HTMLElement;setShop(null);setPanel(p);clearMovement();},[clearMovement]);
  const openShop=useCallback(()=>{const s=state.current;if(!s)return;const near=nearestShop(s);if(near!==null){lastFocus.current=document.activeElement as HTMLElement;setPanel(null);setShop(near);clearMovement();}},[clearMovement]);
 
- const steerJoystick = (event: PointerEvent<HTMLDivElement>) => {
+ const steerJoystick = (event: PointerEvent<HTMLCanvasElement>) => {
   const input = joystickInput.current;
-  if (event.pointerId !== input.pointerId) return;
-  const control = event.currentTarget;
-  const bounds = control.getBoundingClientRect();
-  const x = event.clientX - (bounds.left + bounds.width / 2);
-  const y = event.clientY - (bounds.top + bounds.height / 2);
-  const distance = Math.hypot(x, y);
-  const travel = Math.min(distance, joystickTravel);
-  const scale = joystickTravel / Math.max(distance, joystickTravel);
-  input.x = x * scale;
-  input.y = y * scale;
-  input.strength = Math.max(0, (travel - joystickDeadZone) / (joystickTravel - joystickDeadZone));
-  control.style.setProperty('--joystick-x', `${input.x}px`);
-  control.style.setProperty('--joystick-y', `${input.y}px`);
+  if (input?.pointerId !== event.pointerId) return;
+  input.dx = event.clientX - input.startX;
+  input.dy = event.clientY - input.startY;
  };
- const grabJoystick = (event: PointerEvent<HTMLDivElement>) => {
-  if (event.button !== 0 || joystickInput.current.pointerId !== null || paused || panel || shop !== null) return;
+ const grabJoystick = (event: PointerEvent<HTMLCanvasElement>) => {
+  if (!hasTouchscreen || event.pointerType !== 'touch' || joystickInput.current || paused || panel || shop !== null) return;
   event.preventDefault();
   event.currentTarget.setPointerCapture(event.pointerId);
-  event.currentTarget.dataset.dragging = '';
-  joystickInput.current.pointerId = event.pointerId;
-  steerJoystick(event);
+  joystickInput.current = {pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, dx: 0, dy: 0};
  };
- const finishJoystick = (event: PointerEvent<HTMLDivElement>) => releaseJoystick(event.pointerId);
+ const finishJoystick = (event: PointerEvent<HTMLCanvasElement>) => releaseJoystick(event.pointerId);
 
  useEffect(()=>{
   let raw:string|null=null;try{raw=localStorage.getItem(SAVE_KEY);}catch{}
@@ -87,10 +99,12 @@ export default function Home(){
   const draw=(now:number)=>{
    const dt=Math.min((now-last)/1000||0,.04);last=now;
    const f=flags.current;const active=!f.paused&&!f.panel&&f.shop===null&&!document.hidden;
+   const stick = joystickInput.current;
    if(active){
-    const stick = joystickInput.current;
-    if (stick.strength > 0) {
-     move(s, stick.x, stick.y, dt * stick.strength);
+    const travel = stick ? Math.min(joystickTravel, Math.hypot(stick.dx, stick.dy)) : 0;
+    if (stick && travel > joystickDeadZone) {
+     const strength = (travel - joystickDeadZone) / (joystickTravel - joystickDeadZone);
+     move(s, stick.dx, stick.dy, dt * strength);
     } else {
      const k = keys.current;
      const dx = Number(k.has('d') || k.has('ArrowRight')) - Number(k.has('a') || k.has('ArrowLeft'));
@@ -110,12 +124,10 @@ export default function Home(){
    if(cv&&c){
     const box=cv.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2),w=Math.round(box.width*dpr),h=Math.round(box.height*dpr);
     if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
-    const stickBounds = joystick.current?.getBoundingClientRect();
-    const overlapsCenter = stickBounds && stickBounds.right > box.left + box.width / 2 - 16;
-    const playerBottomLimit = overlapsCenter ? stickBounds.top - box.top - 8 : box.height;
     c.setTransform(dpr,0,0,dpr,0,0);
     c.imageSmoothingEnabled=false;
-    renderWorld(c,s,box.width,box.height,now/1000,particles,playerBottomLimit);
+    renderWorld(c,s,box.width,box.height,now/1000,particles);
+    if (active && stick && stage.current) drawJoystickRing(c, stage.current, box, stick);
    }
    if(now-lastUi>160){sync();setSeconds(60-Math.floor(Date.now()/1000)%60);lastUi=now;const map=mapCanvas.current?.getContext('2d');if(map)minimap(map,s,640,544);}
    if(now-lastSave>5000){safeSave(s);lastSave=now;}
@@ -159,28 +171,25 @@ export default function Home(){
     <section className="game-area" aria-label="Crystal City game">
      <div className="game-toolbar"><div className="town-title"><span className="town-icon"><Flower2 size={16}/></span> Mosswick <span className="town-divider"/> <span className="town-subtitle">Town square</span></div><div className="toolbar-actions"><span className="live-label"><span/> {paused?'PAUSED':'FREE TO ROAM'}</span><button className="icon-button" onClick={()=>setMuted(v=>!v)} aria-label={muted?'Enable sounds':'Mute sounds'} title={muted?'Enable sounds':'Mute sounds'}>{muted?<VolumeX size={17}/>:<Volume2 size={17}/>}</button><button className="icon-button" onClick={togglePause} aria-label={paused?'Resume game':'Pause game'}>{paused?<Play size={16}/>:<Pause size={16}/>}</button></div></div>
      <div className="game-stage" ref={stage}>
-      <canvas ref={canvas} className="world-canvas" aria-label="Mosswick city. Move using WASD or arrow keys. Press E at a shop to browse." tabIndex={0}/>
-      <div className="location-badge"><MapPin size={13}/> {state.current&&state.current.y>770?'Willow gardens':'Mosswick square'}</div>
-      <div className="balance-overlay"><Gem size={17}/><strong>{snapshot.balance.toLocaleString()}</strong><span>crystals</span></div>
-      {!ready&&<div className="loading-overlay">Finding your little corner of the city…</div>}
-      {paused&&<div className="paused-overlay"><span><Pause size={24}/></span><h2>A little breather.</h2><p>The city will be here when you’re ready.</p><button className="primary-button" onClick={()=>setPaused(false)}><Play size={15}/> Keep exploring</button></div>}
-      {!paused&&near&&<button className="interaction-prompt" onClick={openShop}><kbd>E</kbd><span>Browse {near.name}</span><ChevronRight size={15}/></button>}
-      {!paused&&!near&&snapshot.collected<3&&<div className="first-hint"><Sparkles size={15}/> Walk over a crystal to collect it</div>}
-      <div className="map-caption">MOSSWICK · EST. 1998</div>
-      <button className="fullscreen-button" onClick={fullscreen} aria-label={isFullscreen?'Exit fullscreen':'Enter fullscreen'}><Maximize2 size={16}/></button>
-      {hasTouchscreen && <div
-       ref={joystick}
-       className="movement-joystick"
-       role="group"
-       aria-label="Movement joystick"
+      <canvas
+       ref={canvas}
+       className="world-canvas"
+       aria-label={hasTouchscreen ? 'Mosswick city. Touch and drag to move. Tap Browse at a shop.' : 'Mosswick city. Move using WASD or arrow keys. Press E at a shop to browse.'}
+       tabIndex={0}
        onPointerDown={grabJoystick}
        onPointerMove={steerJoystick}
        onPointerUp={finishJoystick}
        onPointerCancel={finishJoystick}
        onLostPointerCapture={finishJoystick}
-      >
-       <span className="joystick-thumb" aria-hidden="true"><Move size={23}/></span>
-      </div>}
+      />
+      <div className="location-badge"><MapPin size={13}/> {state.current&&state.current.y>770?'Willow gardens':'Mosswick square'}</div>
+      <div className="balance-overlay"><Gem size={17}/><strong>{snapshot.balance.toLocaleString()}</strong><span>crystals</span></div>
+      {!ready&&<div className="loading-overlay">Finding your little corner of the city…</div>}
+      {paused&&<div className="paused-overlay"><span><Pause size={24}/></span><h2>A little breather.</h2><p>The city will be here when you’re ready.</p><button className="primary-button" onClick={()=>setPaused(false)}><Play size={15}/> Keep exploring</button></div>}
+      {!paused&&near&&<button className="interaction-prompt" onClick={openShop}><kbd>E</kbd><span>Browse {near.name}</span><ChevronRight size={15}/></button>}
+      {!paused&&!near&&snapshot.collected<3&&<div className="first-hint"><Sparkles size={15}/> {hasTouchscreen ? 'Drag to move and collect crystals' : 'Walk over a crystal to collect it'}</div>}
+      <div className="map-caption">MOSSWICK · EST. 1998</div>
+      <button className="fullscreen-button" onClick={fullscreen} aria-label={isFullscreen?'Exit fullscreen':'Enter fullscreen'}><Maximize2 size={16}/></button>
      </div>
      <div className="game-controls"><div><span className="wasd"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move around</span></div><div><kbd>E</kbd><span>Enter shop</span></div><div><kbd>I</kbd><span>Wardrobe</span></div><button onClick={()=>openPanel('help')}><CircleHelp size={14}/><span>How to play</span></button></div>
     </section>
@@ -196,7 +205,7 @@ export default function Home(){
    <button className="close-button icon-button" onClick={close} aria-label="Close dialog"><X size={20}/></button>
    {shop!==null&&<><div className="eyebrow"><ShoppingBag size={13}/> MOSSWICK LOCAL SHOPS</div><h2 id="dialog-title">{SHOPS[shop].name}</h2><p className="modal-intro">{SHOPS[shop].description}</p><div className="shop-meta"><span><Gem size={16}/><strong>{snapshot.balance}</strong> available</span><span>New finds in <strong>0:{String(seconds).padStart(2,'0')}</strong></span></div><div className="product-grid">{snapshot.stock[shop].map(id=>{const p=byId(id)!;const owned=snapshot.owned.includes(id),isEquipped=snapshot.equipped[p.slot]===id;return <article key={id} className="product-card"><div className="product-art" style={{backgroundColor:`${p.color}18`}}><ProductArt product={p}/><span className="product-rarity" style={{color:RARITIES[p.rarity].color}}>{RARITIES[p.rarity].name}</span></div><div className="product-detail"><h3>{p.name}</h3><span className="product-slot">{slotNames[p.slot]}</span><button className={owned?'secondary-button product-buy':'primary-button product-buy'} disabled={isEquipped||(!owned&&snapshot.balance<p.price)} onClick={()=>owned?toggleEquip(id):purchase(id)}>{owned?<>{isEquipped?<Check size={14}/>:<Shirt size={14}/>} {isEquipped?'Wearing':'Wear it'}</>:<><Gem color="#e2eac8" size={13}/>{p.price}<span>{snapshot.balance<p.price?'Keep collecting':'Make it yours'}</span></>}</button></div></article>;})}</div><p className="modal-footnote">Every purchase goes straight to your wardrobe. Try it on, mix it up.</p></>}
    {panel==='wardrobe'&&<><div className="eyebrow"><Shirt size={13}/> A LITTLE MORE YOU</div><h2 id="dialog-title">Your wardrobe.</h2><p className="modal-intro">Good finds. Endless combinations.</p><div className="wardrobe-content"><div className="wardrobe-preview"><Avatar equipment={snapshot.equipped} large/><span>{equippedCount} / 4 pieces styled</span><div className="equipped-list">{(Object.keys(slotNames) as Slot[]).map(slot=><div key={slot}><span>{slotNames[slot]}</span><strong>{byId(snapshot.equipped[slot])?.name??'The original you'}</strong>{snapshot.equipped[slot]&&<button aria-label={`Remove ${slotNames[slot].toLowerCase()}`} onClick={()=>toggleEquip(snapshot.equipped[slot]!)}><X size={12}/></button>}</div>)}</div></div><div className="wardrobe-items"><div className="wardrobe-tabs" role="tablist">{(Object.keys(slotNames) as Slot[]).map(slot=><button key={slot} role="tab" aria-selected={tab===slot} onClick={()=>setTab(slot)}>{slotNames[slot]}</button>)}</div>{snapshot.owned.some(id=>byId(id)?.slot===tab)?<div className="wardrobe-grid">{CATALOG.filter(p=>p.slot===tab&&snapshot.owned.includes(p.id)).map(p=><button className={`owned-item ${snapshot.equipped[p.slot]===p.id?'equipped':''}`} key={p.id} onClick={()=>toggleEquip(p.id)}><ProductArt product={p}/><strong>{p.name}</strong><span>{snapshot.equipped[p.slot]===p.id?<><Check size={12}/> Wearing</>:'Click to wear'}</span></button>)}</div>:<div className="wardrobe-empty"><ShoppingBag size={33} strokeWidth={1}/><h3>A little room for possibility.</h3><p>Find crystals around town, then visit a shop to pick out your first {tab==='hat'?'hat':tab==='outfit'?'outfit':tab==='shoes'?'pair of shoes':'accessory'}.</p><button className="primary-button" onClick={close}>Let’s go wandering <ArrowRight size={14}/></button></div>}</div></div></>}
-   {panel==='help'&&<><div className="eyebrow"><Flower2 size={13}/> WELCOME TO MOSSWICK</div><h2 id="dialog-title">A little guide to wandering.</h2><p className="modal-intro">There’s no rush. Make yourself at home.</p><div className="help-steps"><div><span>01</span><div><h3>Take the scenic route.</h3><p>{hasTouchscreen ? 'Drag the joystick to move, or use WASD or the arrow keys.' : 'Move with WASD or the arrow keys.'} Explore the square, streets, and willow gardens.</p></div></div><div><span>02</span><div><h3>A little sparkle goes a long way.</h3><p>Walk over crystals to collect them. Rarer colors add more to your balance, and new crystals appear as you explore.</p></div></div><div><span>03</span><div><h3>Find something that feels like you.</h3><p>{hasTouchscreen ? 'Tap Browse by a shop door to see what is in stock.' : 'Press E by a shop door to browse.'} Stock changes every minute. Purchases are automatically worn; open your wardrobe with I to mix and match.</p></div></div></div><div className="help-bottom"><span><kbd>Space</kbd> Pause</span><span><kbd>M</kbd> Town map</span><span><kbd>Esc</kbd> Close</span></div><p className="modal-footnote">Your progress saves automatically in this browser.</p><button className="primary-button help-start" onClick={close}>See you around town <ArrowRight size={15}/></button></>}
+   {panel==='help'&&<><div className="eyebrow"><Flower2 size={13}/> WELCOME TO MOSSWICK</div><h2 id="dialog-title">A little guide to wandering.</h2><p className="modal-intro">There’s no rush. Make yourself at home.</p><div className="help-steps"><div><span>01</span><div><h3>Take the scenic route.</h3><p>{hasTouchscreen ? 'Touch the playfield and drag to move. WASD and the arrow keys work too.' : 'Move with WASD or the arrow keys.'} Explore the square, streets, and willow gardens.</p></div></div><div><span>02</span><div><h3>A little sparkle goes a long way.</h3><p>Walk over crystals to collect them. Rarer colors add more to your balance, and new crystals appear as you explore.</p></div></div><div><span>03</span><div><h3>Find something that feels like you.</h3><p>{hasTouchscreen ? 'Tap Browse by a shop door to see what is in stock.' : 'Press E by a shop door to browse.'} Stock changes every minute. Purchases are automatically worn; open your wardrobe with I to mix and match.</p></div></div></div><div className="help-bottom"><span><kbd>Space</kbd> Pause</span><span><kbd>M</kbd> Town map</span><span><kbd>Esc</kbd> Close</span></div><p className="modal-footnote">Your progress saves automatically in this browser.</p><button className="primary-button help-start" onClick={close}>See you around town <ArrowRight size={15}/></button></>}
    {panel==='map'&&<><div className="eyebrow"><MapPin size={13}/> THE NEIGHBORHOOD</div><h2 id="dialog-title">A place to get a little lost.</h2><p className="modal-intro">Mosswick’s shops, streets, and quiet corners.</p><canvas className="town-map" width="640" height="544" ref={mapCanvas} aria-label="Town map with your current location"/><div className="map-legend"><span><i/> You are here</span><span>Shops line the north side of the square.</span></div></>}
   </div></div>,stage.current)}
   {toast&&stage.current&&createPortal(<div className="toast" role="status"><Sparkles size={16}/>{toast}</div>,stage.current)}

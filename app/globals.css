@@ -40,53 +40,10 @@
   bottom: calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
-.movement-joystick {
-  display: grid;
-  place-items: center;
-  position: absolute;
-  bottom: var(--touch-controls-bottom);
-  left: var(--touch-controls-left);
-  width: 112px;
-  height: 112px;
-  background: transparent;
-  border: 1px solid #48634d80;
-  border-radius: 50%;
-  box-shadow: 0 2px 5px #30483a33;
-  cursor: grab;
+.has-touchscreen .world-canvas {
   touch-action: none;
   user-select: none;
   -webkit-touch-callout: none;
-}
-
-.movement-joystick::before {
-  content: '';
-  position: absolute;
-  inset: 9px;
-  border: 1px solid #80947266;
-  border-radius: inherit;
-  pointer-events: none;
-}
-
-.joystick-thumb {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  background: #385b4699;
-  color: #f7faee;
-  border-radius: 50%;
-  box-shadow: 0 2px 5px #30483a44;
-  transform: translate(var(--joystick-x, 0px), var(--joystick-y, 0px));
-  transition: transform 110ms ease-out;
-  pointer-events: none;
-}
-
-.movement-joystick[data-dragging] {
-  cursor: grabbing;
-}
-
-.movement-joystick[data-dragging] .joystick-thumb {
-  transition: none;
 }
 
 .has-touchscreen .fullscreen-button {
@@ -100,6 +57,7 @@
 .has-touchscreen .first-hint {
   top: 62px;
   bottom: auto;
+  pointer-events: none;
 }
 
 .has-touchscreen .game-stage:fullscreen .first-hint {

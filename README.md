@@ -4,38 +4,34 @@ A single-player pixel-art browser game set in Mosswick. Explore a multi-tile cit
 
 ## Run locally
 
-Requires Node.js 22.13+ (Node 24 recommended).
+Requires Node.js 24 or newer (tested with Node 24).
 
 ```sh
-npm run install:ci
+npm ci
 npm run dev
 ```
 
 Open the printed local URL. WASD or arrow keys move, E browses a nearby shop, I opens the wardrobe, M opens the town map, Space pauses, and Escape closes menus. Touch movement buttons appear on narrow screens. Sound is optional.
 
-## Publish to GitHub Pages
+Run `npm run build` to write the production files to `_site/`. Run `npm start` to preview that build locally.
 
-In the repository's **Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**. Push these changes to `main`, or run **Deploy to GitHub Pages** from the **Actions** tab. The workflow tests the game, builds a static site, and publishes `out/` to Pages.
+## Publish to GitHub Pages and itch.io
 
-For this repository, the default address is https://btbroot.github.io/crystal-city/. The workflow reads the site's base path from GitHub, so user sites and custom domains also work. No Cloudflare account, Worker, database, or deployment secrets are required for Pages.
+In the repository's **Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**. Save the `btbroot` [itch.io API key](https://itch.io/user/settings/api-keys) as the `ITCHIO_API_KEY` [repository secret](https://github.com/btbroot/crystal-city/settings/secrets/actions).
 
-To build the Pages version locally:
+The publishing workflow runs on pushes to `main`. It runs the engine tests and checks TypeScript before building the game once, then deploys the same files to [GitHub Pages](https://btbroot.github.io/crystal-city/) and to the `html5` channel on [itch.io](https://btbroot.itch.io/crystal-city).
 
-```sh
-npm run build:pages
-```
+After the first itch.io upload, edit the project and set **Kind of project** to **HTML**. Check **This file will be played in the browser** for the `html5` upload and save. Future runs update that upload through the same channel.
 
-The generated `out/` directory defaults to the `/crystal-city` base path. To build for a domain root instead, run `PAGES_BASE_PATH='' npm run build:pages`. Serve the output with a static HTTP server at its configured base path; opening `index.html` directly will not load the game correctly.
+The files in `_site/` use relative asset URLs so they can be served over HTTP at a domain root, under a project path, or in the itch.io player. For a manual itch.io upload, ZIP the contents of `_site/` with `index.html` at the archive root.
 
 Progress stays in each browser's local storage. Saves from another domain do not transfer automatically.
 
 ## Verify
 
 ```sh
-node --test --test-isolation=none tests/engine.test.mjs
-npx tsc --noEmit
+npm test
 npm run build
-npm run build:pages
 ```
 
 The engine tests cover crystal values, collision, normalized movement, reachable shops, purchases, equipment, restocking, persistence, invalid saves, and walkable spawn positions.
@@ -44,8 +40,8 @@ The engine tests cover crystal values, collision, normalized movement, reachable
 
 - `game/engine.ts` owns world geometry, collision, rarity and product definitions, simulation, commerce, and versioned save data.
 - `game/render.ts` draws original pixel artwork, layered character clothing, and the town map on Canvas.
-- `app/page.tsx` runs the game loop and keyboard/touch input and provides accessible shop and wardrobe dialogs.
+- `app/crystal-city.tsx` runs the game loop and keyboard/touch input and provides accessible shop and wardrobe dialogs.
 
 Each crystal awards a shared balance: common 1, uncommon 5, rare 15, legendary 50. Shops offer four products and refresh on each minute boundary, including while menus are open. A purchase equips the item immediately. Four clothing slots can be changed independently, and wardrobe items can be removed.
 
-Progress is saved to this browser’s local storage under `crystal-city-v1`, with a fresh game as the fallback for invalid data. Save failures do not interrupt play. No account, backend, or database is needed for game state. `build:pages` uses Next.js static export for GitHub Pages; the original `build` command retains the Sites Vinext starter's Cloudflare Worker integration.
+Progress is saved to this browser’s local storage under `crystal-city-v1`, with a fresh game as the fallback for invalid data. Save failures do not interrupt play.

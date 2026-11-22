@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { newState, move, walkable, collect, buy, equip, restore, save, tickStock, spawnCrystal, nearestShop, CATALOG, SHOPS, RARITIES, WORLD_W, WORLD_H } from '../game/engine.ts';
+import { newState, move, walkable, collect, buy, equip, restore, save, tickStock, spawnCrystal, nearestShop, CATALOG, SHOPS, RARITIES } from '../game/engine.ts';
 test('crystal pickups award each rarity once',()=>{
  const s=newState();s.crystals=RARITIES.map((_,i)=>({id:i,x:s.x,y:s.y,rarity:i,phase:0}));
  assert.equal(collect(s).length,4);assert.equal(s.balance,71);assert.equal(s.collected,4);assert.equal(collect(s).length,0);assert.equal(s.balance,71);
